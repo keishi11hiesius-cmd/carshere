@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>カーシェア料金比較ツール</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 15px; margin: 0; background: #f7f9fc; color: #333; line-height: 1.5; }
+    h2 { font-size: 1.2rem; text-align: center; margin-bottom: 20px; }
+    .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+    .card-title { font-size: 1rem; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+    .input-group { margin-bottom: 12px; }
+    label { display: block; font-weight: bold; font-size: 0.85rem; margin-bottom: 4px; color: #555; }
+    
+    /* 日付・時間一体型インターフェースのスタイル */
+    .datetime-row { display: flex; gap: 8px; align-items: center; }
+    .datetime-row input[type="date"] { flex: 1.3; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95rem; background: #fff; }
+    .datetime-row select { flex: 1; padding: 10px; border: 1px solid #ccc; border-radius: 8px; font-size: 0.95rem; background: #fff; }
+
+    input[type="number"], select { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 1rem; background: #fff; }
+    
+    .checkbox-group { display: flex; gap: 15px; align-items: center; margin-top: 5px; }
+    .checkbox-group label { display: flex; align-items: center; font-weight: normal; margin-bottom: 0; cursor: pointer; color: #333; }
+    .checkbox-group input { width: auto; margin-right: 6px; transform: scale(1.2); }
+    
+    .result-box { display: flex; gap: 10px; margin-top: 15px; align-items: stretch; }
+    .brand { flex: 1; padding: 15px 10px; border-radius: 8px; text-align: center; position: relative; display: flex; flex-direction: column; }
+    .times { background: #fff000; color: #111; border: 2px solid #e6d800; }
+    .mitsui { background: #003366; color: white; border: 2px solid #002244; }
+    .brand-name { font-size: 0.85rem; font-weight: bold; margin-bottom: 5px; }
+    .car-class { font-size: 0.75rem; background: rgba(0,0,0,0.1); display: inline-block; padding: 2px 6px; border-radius: 4px; margin-bottom: 5px; }
+    .mitsui .car-class { background: rgba(255,255,255,0.2); }
+    .price { font-size: 1.5rem; font-weight: bold; margin: 5px 0; }
+    .per-person { font-size: 0.85rem; }
+    .winner-badge { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); background: #ff3b30; color: white; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: bold; display: none; z-index: 10; }
+    
+    .analysis { background: #e3f2fd; padding: 15px; border-radius: 12px; font-size: 0.9rem; margin-top: 20px; border-left: 4px solid #2196f3; }
+    .analysis p { margin: 5px 0; }
+    .error-msg { color: #d32f2f; font-size: 0.85rem; font-weight: bold; margin-top: 5px; }
+    .brand-section { margin-bottom: 12px; padding: 10px; border-radius: 8px; background: #f9f9f9; }
+    .mitsui .brand-section { background: rgba(255,255,255,0.1); }
+
+    .breakdown { font-size: 0.8rem; background: rgba(255,255,255,0.85); padding: 10px; border-radius: 8px; margin-top: auto; border: 1px solid rgba(0,0,0,0.1); color: #333; text-align: left; line-height: 1.4; }
+    .mitsui .breakdown { background: rgba(255,255,255,0.1); color: #fff; border-color: rgba(255,255,255,0.3); }
+    .breakdown-row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+    .breakdown-row.total { font-weight: bold; border-top: 1px solid rgba(0,0,0,0.2); padding-top: 5px; margin-top: 5px; font-size: 0.9rem; }
+    .mitsui .breakdown-row.total { border-top: 1px solid rgba(255,255,255,0.3); }
+    .discount-text { color: #d32f2f; font-weight: bold; }
+    .mitsui .discount-text { color: #ffb74d; }
+  </style>
+</head>
+<body>
+
+  <h2>カーシェア料金比較</h2>
+
+  <div class="card">
+    <div class="card-title">利用日時・条件</div>
+    
+    <!-- 貸し出し（上側） -->
+    <div class="input-group">
+      <label>⬆ 貸し出し日時</label>
+      <div class="datetime-row">
+        <input type="date" id="startDate" onchange="triggerCalculate()">
+        <select id="startTime" onchange="triggerCalculate()"></select>
+      </div>
+    </div>
+
+    <!-- 返却（下側） -->
+    <div class="input-group">
+      <label>⬇ 返却日時</label>
+      <div class="datetime-row">
+        <input type="date" id="endDate" onchange="triggerCalculate()">
+        <select id="endTime" onchange="triggerCalculate()"></select>
+      </div>
+      <div id="timeError" class="error-msg"></div>
+    </div>
+
+    <div class="input-group" style="margin-top: 15px;">
+      <label>走行距離 (km)</label>
+      <input type="number" id="distance" value="50" min="0" oninput="triggerCalculate()">
+    </div>
+    <div class="input-group" style="margin-bottom: 0;">
+      <label>乗車人数 (人)</label>
+      <input type="number" id="people" value="1" min="1" max="10" oninput="triggerCalculate()">
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">割引・オプション設定</div>
+    
+    <div class="checkbox-group" style="margin-bottom: 12px; padding: 10px; background: #e8f5e9; border-radius: 8px;">
+      <label><input type="checkbox" id="commonWash" onchange="triggerCalculate()"> 🧽 洗車割引（両社共通）</label>
+    </div>
+
+    <div class="brand-section">
+      <label>【タイムズカー】</label>
+      <div class="input-group" style="margin-top: 5px; margin-bottom: 8px;">
+        <select id="timesStage" onchange="triggerCalculate()">
+          <option value="1">ステージ 1</option>
+          <option value="2">ステージ 2</option>
+          <option value="3">ステージ 3</option>
+          <option value="4">ステージ 4</option>
+        </select>
+      </div>
+      <div class="checkbox-group" style="flex-direction: column; align-items: flex-start; gap: 6px;">
+        <label><input type="checkbox" id="timesRefuel" onchange="triggerCalculate()"> ⛽ 給油割引</label>
+        <label><input type="checkbox" id="timesSupport" onchange="triggerCalculate()"> 🛡 安心補償サービス（+550円/1利用）</label>
+      </div>
+    </div>
+
+    <div class="brand-section" style="margin-bottom: 0;">
+      <label>【三井のカーシェア】</label>
+      <div class="checkbox-group" style="flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 5px;">
+        <label><input type="checkbox" id="mitsuiRefuel" onchange="triggerCalculate()"> ⛽ 給油割引</label>
+        <label><input type="checkbox" id="mitsuiSupport" onchange="triggerCalculate()"> 🛡 トラブルあんしんサポート（+550円/24h）</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="result-box">
+    <div class="brand times" id="timesBox">
+      <div class="winner-badge" id="timesWinner">最安</div>
+      <div class="brand-name">タイムズカー</div>
+      <div class="car-class" id="timesClass">判定中</div>
+      <div class="price" id="timesPrice">¥0</div>
+      <div class="per-person" id="timesPerPerson">1人: ¥0</div>
+      <div class="breakdown" id="timesBreakdown"></div>
+    </div>
+
+    <div class="brand mitsui" id="mitsuiBox">
+      <div class="winner-badge" id="mitsuiWinner">最安</div>
+      <div class="brand-name">三井のカーシェア</div>
+      <div class="car-class" id="mitsuiClass">判定中</div>
+      <div class="price" id="mitsuiPrice">¥0</div>
+      <div class="per-person" id="mitsuiPerPerson">1人: ¥0</div>
+      <div class="breakdown" id="mitsuiBreakdown"></div>
+    </div>
+  </div>
+
+  <div class="analysis" id="analysisArea">
+    <p><strong>💡 料金の分岐点（どちらがお得か？）</strong></p>
+    <p id="distBoundary">計算中...</p>
+    <p id="timeBoundary">計算中...</p>
+  </div>
+
+<script>
+const MASTER = {
+  times: {
+    classes: {
+      basic:   { unitPrice: 220, unitMin: 15, pack6: 4290, pack12: 5500, pack24: 6600, pack36: 8800, pack48: 9900, pack72: 14300, packAdd24: 5500, night: 2640, distPrice: 20 },
+      middle:  { unitPrice: 330, unitMin: 15, pack6: 6490, pack12: 7700, pack24: 8800, pack36: 11000, pack48: 13200, pack72: 18700, packAdd24: 6600, night: 3960, distPrice: 20 },
+      premium: { unitPrice: 440, unitMin: 15, pack6: 8690, pack12: 9900, pack24: 12100, pack36: 17600, pack48: 20900, pack72: 27500, packAdd24: 7700, night: 5280, distPrice: 20 }
+    },
+    nightPackLimitHours: 15, 
+    nightPackMaxExtHours: 6, 
+    discounts: {
+      refuelDiscountMins: 30, 
+      washDiscountMins: 30,   
+      stageDistDiscount: { 1: 0, 2: 0, 3: 300, 4: 1000 } 
+    }
+  },
+  mitsui: {
+    classes: {
+      basic:       { unitPrice: 150, unitMin: 10, pack6: 4280, pack12: 5700, pack24: 7300, night: 3200, distPrice: 21 },
+      middle_plus: { unitPrice: 220, unitMin: 10, pack6: 5980, pack12: 8300, pack24: 10100, night: 4500, distPrice: 21 },
+      premium:     { unitPrice: 290, unitMin: 10, pack6: 8680, pack12: 9900, pack24: 12100, night: Infinity, distPrice: 23 } 
+    },
+    nightPackLimitHours: 15,
+    discounts: {
+      refuelDiscountYen: 400, 
+      washDiscountYen: 500    
+    }
+  }
+};
+
+// 24h形式の時間セレクトボックスを生成
+function initTimeSelects() {
+  const timeSelects = [document.getElementById('startTime'), document.getElementById('endTime')];
+  timeSelects.forEach(select => {
+    select.innerHTML = '';
+    for (let h = 0; h < 24; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        let hh = String(h).padStart(2, '0');
+        let mm = String(m).padStart(2, '0');
+        let opt = document.createElement('option');
+        opt.value = `${hh}:${mm}`;
+        opt.innerText = `${hh}:${mm}`;
+        select.appendChild(opt);
+      }
+    }
+  });
+}
+
+window.onload = () => {
+  initTimeSelects();
+  
+  const now = new Date();
+  now.setMinutes(0, 0, 0);
+  document.getElementById('startDate').value = toDateStr(now);
+  document.getElementById('startTime').value = toTimeStr(now);
+
+  const later = new Date(now.getTime() + 6 * 3600000);
+  document.getElementById('endDate').value = toDateStr(later);
+  document.getElementById('endTime').value = toTimeStr(later);
+
+  calculate();
+};
+
+function toDateStr(date) {
+  const pad = n => n.toString().padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}`;
+}
+
+function toTimeStr(date) {
+  const pad = n => n.toString().padStart(2, '0');
+  let m = Math.floor(date.getMinutes() / 15) * 15;
+  if(m === 60) { m = 0; date.setHours(date.getHours() + 1); }
+  return `${pad(date.getHours())}:${pad(m)}`;
+}
+
+function getSelectedDateTime(dateId, timeId) {
+  const dVal = document.getElementById(dateId).value;
+  const tVal = document.getElementById(timeId).value;
+  if(!dVal || !tVal) return new Date();
+  return new Date(`${dVal}T${tVal}:00`);
+}
+
+function triggerCalculate() {
+  calculate();
+}
+
+function getTimesClass(people) {
+  if (people <= 5) return 'basic';
+  if (people <= 7) return 'middle';
+  return 'premium';
+}
+function getMitsuiClass(people) {
+  if (people <= 7) return 'basic';
+  if (people === 8) return 'middle_plus';
+  return 'premium';
+}
+const classNames = { basic: 'ベーシック', middle: 'ミドル', middle_plus: 'ミドルプラス', premium: 'プレミアム' };
+
+function getNightPackEnd(startDate) {
+  let d = new Date(startDate.getTime());
+  let h = d.getHours();
+  if (h >= 18) {
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    return d;
+  } else if (h < 9) {
+    d.setHours(9, 0, 0, 0);
+    return d;
+  }
+  return null;
+}
+
+// --- タイムズ計算ロジック ---
+function calcTimes(mins, km, pClass, stage, hasRefuel, hasWash, hasSupport, startDate, endDate) {
+  const plan = MASTER.times.classes[pClass];
+  let options = []; 
+
+  const addOption = (name, timeFee, isNight) => {
+    let discountMins = (hasRefuel ? MASTER.times.discounts.refuelDiscountMins : 0) + (hasWash ? MASTER.times.discounts.washDiscountMins : 0);
+    let discountAmount = Math.floor(discountMins / plan.unitMin) * plan.unitPrice;
+    let finalTimeFee = Math.max(0, timeFee - discountAmount);
+
+    let distDiscount = isNight ? 0 : MASTER.times.discounts.stageDistDiscount[stage];
+    let chargedKm = isNight ? km : (mins <= 6 * 60 ? Math.max(0, km - 20) : km);
+    let baseDistFee = chargedKm * plan.distPrice;
+    let distFee = Math.max(0, baseDistFee - distDiscount);
+
+    // 安心補償サービス：1利用につき550円
+    let supportFee = hasSupport ? 550 : 0;
+
+    options.push({
+      planName: name,
+      timeFee: timeFee,
+      finalTimeFee: finalTimeFee,
+      distFee: distFee,
+      supportFee: supportFee,
+      total: finalTimeFee + distFee + supportFee, 
+      discountAmount: discountAmount,
+      isNight: isNight,
+      chargedKm: chargedKm,
+      distDiscount: distDiscount
+    });
+  };
+
+  addOption('ショート料金', Math.ceil(mins / plan.unitMin) * plan.unitPrice, false);
+  
+  const packs = [
+    { h: 6, f: plan.pack6 }, { h: 12, f: plan.pack12 }, { h: 24, f: plan.pack24 },
+    { h: 36, f: plan.pack36 }, { h: 48, f: plan.pack48 }, { h: 72, f: plan.pack72 }
+  ];
+  packs.forEach(p => {
+    let extraMins = Math.max(0, mins - p.h * 60);
+    let extraFee = Math.ceil(extraMins / plan.unitMin) * plan.unitPrice;
+    addOption(`${p.h}時間パック${extraMins > 0 ? `+超過` : ''}`, p.f + extraFee, false);
+  });
+
+  if (mins > 72 * 60) {
+    let extraDays = Math.ceil((mins - 72 * 60) / (24 * 60));
+    for (let d = 1; d <= extraDays; d++) {
+      let packMins = (72 + d * 24) * 60;
+      let extraMins = Math.max(0, mins - packMins);
+      let extraFee = Math.ceil(extraMins / plan.unitMin) * plan.unitPrice;
+      addOption(`${72 + d * 24}時間パック${extraMins > 0 ? `+超過` : ''}`, plan.pack72 + (d * plan.packAdd24) + extraFee, false);
+    }
+  }
+
+  let npEnd = getNightPackEnd(startDate);
+  if (npEnd) {
+    let extraMins = 0;
+    if (endDate > npEnd) {
+      extraMins = (endDate.getTime() - npEnd.getTime()) / 60000;
+    }
+    if (extraMins <= MASTER.times.nightPackMaxExtHours * 60) {
+      let extraFee = Math.ceil(extraMins / plan.unitMin) * plan.unitPrice;
+      addOption(`夜間パック${extraMins > 0 ? `+超過` : ''}`, plan.night + extraFee, true);
+    }
+  }
+
+  let bestOption = options.reduce((min, opt) => opt.total < min.total ? opt : min, options[0]);
+  return bestOption;
+}
+
+function calcStandardMitsui(mins, plan) {
+  if (mins <= 0) return { fee: 0, name: '' };
+  let best = Infinity;
+  let bestName = '';
+  const max24 = Math.ceil(mins / (24 * 60));
+  
+  for (let n24 = 0; n24 <= max24; n24++) {
+    for (let n12 = 0; n12 <= 2; n12++) {
+      for (let n6 = 0; n6 <= 2; n6++) {
+        let covered = (n24 * 24 + n12 * 12 + n6 * 6) * 60;
+        let extra = Math.max(0, mins - covered);
+        let fee = n24 * plan.pack24 + n12 * plan.pack12 + n6 * plan.pack6 + Math.ceil(extra / plan.unitMin) * plan.unitPrice;
+        if (fee < best) {
+          best = fee;
+          let names = [];
+          if (n24) names.push(`24h×${n24}`);
+          if (n12) names.push(`12h×${n12}`);
+          if (n6) names.push(`6h×${n6}`);
+          bestName = names.length > 0 ? names.join('+') + (extra>0?'+超過':'') : 'ショート';
+        }
+      }
+    }
+  }
+  return { fee: best, name: bestName };
+}
+
+// --- 三井計算ロジック ---
+function calcMitsui(mins, km, pClass, hasRefuel, hasWash, hasSupport, startDate, endDate) {
+  const plan = MASTER.mitsui.classes[pClass];
+  
+  let nightWindows = [];
+  let d = new Date(startDate.getTime());
+  d.setHours(0,0,0,0);
+  d.setDate(d.getDate() - 1);
+  while (d <= endDate) {
+    let nwStart = new Date(d.getTime());
+    nwStart.setHours(18, 0, 0, 0);
+    let nwEnd = new Date(d.getTime());
+    nwEnd.setDate(nwEnd.getDate() + 1);
+    nwEnd.setHours(9, 0, 0, 0);
+    
+    let iStart = new Date(Math.max(nwStart.getTime(), startDate.getTime()));
+    let iEnd = new Date(Math.min(nwEnd.getTime(), endDate.getTime()));
+    if (iStart < iEnd) {
+      nightWindows.push({ start: iStart, end: iEnd });
+    }
+    d.setDate(d.getDate() + 1);
+  }
+
+  let bestFee = Infinity;
+  let bestName = '';
+  let N = plan.night === Infinity ? 0 : nightWindows.length;
+  
+  for (let mask = 0; mask < (1 << N); mask++) {
+    let curr = startDate.getTime();
+    let fee = 0;
+    let names = [];
+
+    for (let i = 0; i < N; i++) {
+      if ((mask & (1 << i)) !== 0) {
+        let nw = nightWindows[i];
+        if (curr < nw.start.getTime()) {
+          let m = (nw.start.getTime() - curr) / 60000;
+          let res = calcStandardMitsui(m, plan);
+          fee += res.fee;
+          if (res.name) names.push(res.name);
+        }
+        fee += plan.night;
+        names.push('夜間');
+        curr = nw.end.getTime();
+      }
+    }
+    if (curr < endDate.getTime()) {
+      let m = (endDate.getTime() - curr) / 60000;
+      let res = calcStandardMitsui(m, plan);
+      fee += res.fee;
+      if (res.name) names.push(res.name);
+    }
+
+    if (fee < bestFee) {
+      bestFee = fee;
+      bestName = names.join('+');
+    }
+  }
+
+  let discountAmount = (hasRefuel ? MASTER.mitsui.discounts.refuelDiscountYen : 0) + (hasWash ? MASTER.mitsui.discounts.washDiscountYen : 0);
+  let finalTimeFee = Math.max(0, bestFee - discountAmount);
+  let distFee = (mins > 6 * 60) ? (km * plan.distPrice) : 0;
+
+  // トラブルあんしんサポート：24時間ごとに550円（25時間なら550×2=1100円）
+  let supportUnits = Math.ceil(mins / (24 * 60));
+  let supportFee = hasSupport ? (supportUnits * 550) : 0;
+
+  return {
+    total: finalTimeFee + distFee + supportFee,
+    timeFee: bestFee,
+    planName: bestName || 'ショート',
+    discountAmount: discountAmount,
+    distFee: distFee,
+    supportFee: supportFee,
+    chargedKm: (mins > 6 * 60) ? km : 0
+  };
+}
+
+function renderBreakdown(res) {
+  let html = `
+    <div class="breakdown-row"><span>適用:</span><span>${res.planName}</span></div>
+    <div class="breakdown-row"><span>時間:</span><span>¥${res.timeFee.toLocaleString()}</span></div>
+  `;
+  if (res.discountAmount > 0) {
+    html += `<div class="breakdown-row discount-text"><span>割引:</span><span>-¥${res.discountAmount.toLocaleString()}</span></div>`;
+  }
+  html += `
+    <div class="breakdown-row">
+      <span>距離: <span style="font-size:0.7rem;">(${res.chargedKm}km分${res.distDiscount > 0 ? '※割' : ''})</span></span>
+      <span>¥${res.distFee.toLocaleString()}</span>
+    </div>
+  `;
+  if (res.supportFee > 0) {
+    html += `<div class="breakdown-row"><span>安心サポート:</span><span>¥${res.supportFee.toLocaleString()}</span></div>`;
+  }
+  html += `
+    <div class="breakdown-row total"><span>合計:</span><span>¥${res.total.toLocaleString()}</span></div>
+  `;
+  return html;
+}
+
+function calculate() {
+  const start = getSelectedDateTime('startDate', 'startTime');
+  const end = getSelectedDateTime('endDate', 'endTime');
+  const dist = parseInt(document.getElementById('distance').value) || 0;
+  const rawPeople = parseInt(document.getElementById('people').value) || 1;
+  const people = Math.min(10, Math.max(1, rawPeople));
+
+  const errDiv = document.getElementById('timeError');
+  const tStage = parseInt(document.getElementById('timesStage').value);
+  const commonWash = document.getElementById('commonWash').checked;
+  const tRefuel = document.getElementById('timesRefuel').checked;
+  const tSupport = document.getElementById('timesSupport').checked;
+  const mRefuel = document.getElementById('mitsuiRefuel').checked;
+  const mSupport = document.getElementById('mitsuiSupport').checked;
+
+  if (end <= start) {
+    errDiv.innerText = "返却日時は貸し出し日時より後に設定してください。";
+    return;
+  } else {
+    errDiv.innerText = "";
+  }
+
+  const mins = (end - start) / (1000 * 60);
+  const tClass = getTimesClass(people);
+  const mClass = getMitsuiClass(people);
+
+  document.getElementById('timesClass').innerText = classNames[tClass] + "クラス";
+  document.getElementById('mitsuiClass').innerText = classNames[mClass] + "クラス";
+
+  const tRes = calcTimes(mins, dist, tClass, tStage, tRefuel, commonWash, tSupport, start, end);
+  const mRes = calcMitsui(mins, dist, mClass, mRefuel, commonWash, mSupport, start, end);
+
+  document.getElementById('timesPrice').innerText = `¥${tRes.total.toLocaleString()}`;
+  document.getElementById('timesPerPerson').innerText = `1人: ¥${Math.ceil(tRes.total/people).toLocaleString()}`;
+  document.getElementById('timesBreakdown').innerHTML = renderBreakdown(tRes);
+
+  document.getElementById('mitsuiPrice').innerText = `¥${mRes.total.toLocaleString()}`;
+  document.getElementById('mitsuiPerPerson').innerText = `1人: ¥${Math.ceil(mRes.total/people).toLocaleString()}`;
+  document.getElementById('mitsuiBreakdown').innerHTML = renderBreakdown(mRes);
+
+  document.getElementById('timesWinner').style.display = tRes.total <= mRes.total ? 'block' : 'none';
+  document.getElementById('mitsuiWinner').style.display = mRes.total < tRes.total ? 'block' : 'none';
+  
+  analyzeBoundaries(mins, dist, tClass, mClass, tStage, tRefuel, commonWash, tSupport, mSupport, start, end);
+}
+
+function analyzeBoundaries(cMins, cDist, tClass, mClass, tStage, tRefuel, cWash, tSupport, mSupport, startDate, endDate) {
+  
+  const getWin = (m, d, eDate) => {
+    const t = calcTimes(m, d, tClass, tStage, tRefuel, cWash, tSupport, startDate, eDate).total;
+    const mi = calcMitsui(m, d, mClass, mRefuel, cWash, mSupport, startDate, eDate).total;
+    return t <= mi ? 'times' : 'mitsui';
+  };
+
+  const currentWinner = getWin(cMins, cDist, endDate);
+  const wName = currentWinner === 'times' ? 'タイムズ' : '三井';
+  const lName = currentWinner === 'times' ? '三井' : 'タイムズ';
+
+  const maxSearchDist = cDist + 1500;
+  
+  let distUp = null, distDown = null;
+  for (let k = cDist + 5; k <= maxSearchDist; k += 5) {
+    if (getWin(cMins, k, endDate) !== currentWinner) { distUp = k; break; }
+  }
+  for (let k = cDist - 5; k >= 0; k -= 5) {
+    if (getWin(cMins, k, endDate) !== currentWinner) { distDown = k; break; }
+  }
+
+  let distTxt = `現在の時間・割引設定では、現実的な範囲で距離が変わっても ${wName} が最安です。`;
+  if (distUp !== null && distDown !== null) {
+    distTxt = `🚗 走行距離が <strong>${distDown}km以下</strong>、または <strong>${distUp}km以上</strong> の場合、${lName} の方が安くなります。`;
+  } else if (distUp !== null) {
+    distTxt = `🚗 走行距離が約 <strong>${distUp}km 以上</strong> になると、${lName} の方が安くなります。`;
+  } else if (distDown !== null) {
+    distTxt = `🚗 走行距離が約 <strong>${distDown}km 以下</strong> に収まるなら、${lName} の方が安くなります。`;
+  }
+
+  const maxSearchMins = cMins + (48 * 60);
+
+  let timeUp = null, timeDown = null;
+  for (let m = cMins + 15; m <= maxSearchMins; m += 15) {
+    let simEndDate = new Date(startDate.getTime() + m * 60000);
+    if (getWin(m, cDist, simEndDate) !== currentWinner) { timeUp = m; break; }
+  }
+  for (let m = cMins - 15; m >= 15; m -= 15) {
+    let simEndDate = new Date(startDate.getTime() + m * 60000);
+    if (getWin(m, cDist, simEndDate) !== currentWinner) { timeDown = m; break; }
+  }
+
+  const formatTime = (mins) => {
+    const d = Math.floor(mins / (24 * 60));
+    const h = Math.floor((mins % (24 * 60)) / 60);
+    const min = mins % 60;
+    if (d > 0) return `<strong>${d}日と${h}時間${min}分</strong>`;
+    return `<strong>${h}時間${min}分</strong>`;
+  };
+
+  let timeTxt = `現在の距離・割引設定では、現実的な範囲で時間が延びても短縮しても ${wName} が最安です。`;
+  
+  if (timeUp !== null && timeDown !== null) {
+    timeTxt = `⏱ 利用時間が ${formatTime(timeDown)} 以下、または ${formatTime(timeUp)} 以上 の場合、${lName} の方が安くなります。`;
+  } else if (timeUp !== null) {
+    timeTxt = `⏱ 利用時間が ${formatTime(timeUp)} 以上 になると、${lName} の方が安くなります。`;
+  } else if (timeDown !== null) {
+    timeTxt = `⏱ 利用時間が ${formatTime(timeDown)} 以下 なら、${lName} の方が安くなります。`;
+  }
+
+  document.getElementById('distBoundary').innerHTML = distTxt;
+  document.getElementById('timeBoundary').innerHTML = timeTxt;
+}
+</script>
+</body>
+</html>
